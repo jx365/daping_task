@@ -27,4 +27,5 @@ COPY --from=builder /app/node_modules ./node_modules
 RUN mkdir -p /data/uploads && chmod -R 777 /data
 VOLUME /data
 EXPOSE 3000
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 CMD ["npx", "next", "start", "-H", "0.0.0.0", "-p", "3000"]

@@ -1,10 +1,16 @@
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { UPLOAD_DIR, ensureDataDirs } from './paths';
 import { getDb } from './db';
 import type { DetailItem } from './summary';
+
+function loadExcelJS(): typeof ExcelJS {
+  // 避免被 Next 打包弄坏；运行时从 node_modules 加载
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('exceljs');
+}
 
 export type ParsedImage = {
   /** local binary (embedded Excel image) */
@@ -157,8 +163,22 @@ export async function parseExcelBuffer(
   buffer: Buffer,
   taskNameFallback: string
 ): Promise<ParsedRow[]> {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+  ensureDataDirs();
+  const ExcelJS = loadExcelJS();
+  const tmp = path.join(UPLOAD_DIR, `upload-${randomUUID()}.xlsx`);
+  fs.writeFileSync(tmp, buffer);
+
+  let workbook: ExcelJS.Workbook;
+  try {
+    workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(tmp);
+  } finally {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // ignore
+    }
+  }
 
   const worksheet = workbook.worksheets[0];
   if (!worksheet) return [];
