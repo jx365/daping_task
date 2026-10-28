@@ -1,0 +1,12 @@
+node_modules
+.next
+data
+*.db
+.git
+.gitignore
+README.md
+.env
+.env.*
+*.md
+demo
+task-stats-tmp
