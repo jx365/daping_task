@@ -68,9 +68,17 @@ export default function UploadModal({ open, files, token, onClose, onDone, onErr
         body: form,
       });
       setProgress(85);
-      const data = await res.json();
+      const raw = await res.text();
+      let data: { error?: string; message?: string } = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        onError(res.ok ? '服务器返回异常' : `上传失败（HTTP ${res.status}）`);
+        setUploading(false);
+        return;
+      }
       if (!res.ok) {
-        onError(data.error || '上传失败');
+        onError(data.error || `上传失败（HTTP ${res.status}）`);
         setUploading(false);
         return;
       }
@@ -78,7 +86,7 @@ export default function UploadModal({ open, files, token, onClose, onDone, onErr
       onDone(data.message || '导入成功');
       onClose();
     } catch {
-      onError('上传失败，请重试');
+      onError('上传失败，请重试（网络中断或请求超时）');
     } finally {
       setUploading(false);
     }

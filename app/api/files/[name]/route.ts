@@ -29,7 +29,37 @@ export async function GET(
   if (!fp.startsWith(UPLOAD_DIR) || !fs.existsSync(fp)) {
     return NextResponse.json({ error: '文件不存在' }, { status: 404 });
   }
+
   const ext = name.split('.').pop()?.toLowerCase() || '';
+
+  // Remote credential URL saved at upload time (no download during import)
+  if (ext === 'ref') {
+    const url = fs.readFileSync(fp, 'utf8').trim();
+    if (!/^https?:\/\//i.test(url)) {
+      return NextResponse.json({ error: '无效远程图片' }, { status: 400 });
+    }
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(12000),
+        headers: { 'User-Agent': 'task-stats/1.0' },
+      });
+      if (!res.ok) {
+        return NextResponse.json({ error: '远程图片拉取失败' }, { status: 502 });
+      }
+      const buf = Buffer.from(await res.arrayBuffer());
+      const type = res.headers.get('content-type') || 'image/jpeg';
+      return new NextResponse(new Uint8Array(buf), {
+        status: 200,
+        headers: {
+          'Content-Type': type,
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
+    } catch {
+      return NextResponse.json({ error: '远程图片拉取失败' }, { status: 502 });
+    }
+  }
+
   const type = MIME[ext] || 'application/octet-stream';
   const buf = fs.readFileSync(fp);
   return new NextResponse(new Uint8Array(buf), {

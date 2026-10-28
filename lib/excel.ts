@@ -7,8 +7,11 @@ import { getDb } from './db';
 import type { DetailItem } from './summary';
 
 export type ParsedImage = {
-  buffer: Buffer;
+  /** local binary (embedded Excel image) */
+  buffer?: Buffer;
   extension: string;
+  /** remote credential URL (群·问卷 hyperlink) — stored as .ref, no download at upload */
+  remoteUrl?: string;
 };
 
 export type ParsedRow = {
@@ -20,8 +23,9 @@ export type ParsedRow = {
 };
 
 const USER_HEADER_RE = /id|用户|账号|姓名|昵称|学号|工号|人员/i;
-const TASK_HEADER_RE = /任务|项目|活动|事项|名称/i;
+const TASK_HEADER_RE = /任务|项目|活动|事项/i;
 const IMAGE_HEADER_RE = /图片|凭证|上传|照片|截图/i;
+const EMPTY_PLACEHOLDER_RE = /^(--|-|—|无|null|n\/?a)?$/i;
 
 function cellText(value: unknown): string {
   if (value == null) return '';
@@ -51,15 +55,9 @@ function cellHyperlink(value: unknown): string | null {
   return null;
 }
 
-function extFromUrlOrType(url: string, contentType?: string | null): string {
-  const fromUrl = url.split('?')[0].split('.').pop()?.toLowerCase();
-  if (fromUrl && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(fromUrl)) {
-    return fromUrl === 'jpeg' ? 'jpg' : fromUrl;
-  }
-  if (contentType?.includes('png')) return 'png';
-  if (contentType?.includes('gif')) return 'gif';
-  if (contentType?.includes('webp')) return 'webp';
-  return 'jpg';
+function isEmptyImageCell(text: string, href: string | null): boolean {
+  if (href) return false;
+  return EMPTY_PLACEHOLDER_RE.test(text);
 }
 
 function uniqueNonEmptyValues(row: ExcelJS.Row, maxCol: number): string[] {
@@ -100,7 +98,10 @@ function findColumnIndexes(
     if (!t) continue;
     if (firstNonEmpty == null) firstNonEmpty = c;
     if (userCol == null && USER_HEADER_RE.test(t)) userCol = c;
-    if (taskCol == null && TASK_HEADER_RE.test(t) && !USER_HEADER_RE.test(t)) taskCol = c;
+    // 避免把「名称」类宽泛词误伤；任务列需更明确
+    if (taskCol == null && TASK_HEADER_RE.test(t) && !USER_HEADER_RE.test(t) && !IMAGE_HEADER_RE.test(t)) {
+      taskCol = c;
+    }
     if (IMAGE_HEADER_RE.test(t)) imageCols.push(c);
   }
 
@@ -123,25 +124,32 @@ export function computeTimes(imageCount: number, base: number): number {
   return base === 0 ? 1 : Math.max(1, Math.round(imageCount / base));
 }
 
-async function downloadImage(url: string): Promise<ParsedImage | null> {
-  try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(15000),
-      headers: { 'User-Agent': 'task-stats/1.0' },
-    });
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length < 10) return null;
-    return { buffer: buf, extension: extFromUrlOrType(url, res.headers.get('content-type')) };
-  } catch {
-    return null;
+function saveImage(img: ParsedImage): string {
+  if (img.remoteUrl) {
+    const name = `${uuidv4()}.ref`;
+    fs.writeFileSync(path.join(UPLOAD_DIR, name), img.remoteUrl, 'utf8');
+    return name;
   }
+  const name = `${uuidv4()}.${img.extension || 'jpg'}`;
+  fs.writeFileSync(path.join(UPLOAD_DIR, name), img.buffer || Buffer.alloc(0));
+  return name;
 }
 
-function saveImage(img: ParsedImage): string {
-  const name = `${uuidv4()}.${img.extension || 'jpg'}`;
-  fs.writeFileSync(path.join(UPLOAD_DIR, name), img.buffer);
-  return name;
+function collectRemoteImages(
+  row: ExcelJS.Row,
+  cols: number[]
+): ParsedImage[] {
+  const images: ParsedImage[] = [];
+  for (const c of cols) {
+    const val = row.getCell(c).value;
+    const href = cellHyperlink(val);
+    const text = cellText(val);
+    if (isEmptyImageCell(text, href)) continue;
+    if (href) {
+      images.push({ extension: 'ref', remoteUrl: href });
+    }
+  }
+  return images;
 }
 
 export async function parseExcelBuffer(
@@ -149,7 +157,6 @@ export async function parseExcelBuffer(
   taskNameFallback: string
 ): Promise<ParsedRow[]> {
   const workbook = new ExcelJS.Workbook();
-  // exceljs typings accept Buffer via ArrayBuffer-like
   await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
 
   const worksheet = workbook.worksheets[0];
@@ -160,7 +167,7 @@ export async function parseExcelBuffer(
   const headerRow = worksheet.getRow(headerRowNum);
   const { userCol, taskCol, imageCols } = findColumnIndexes(headerRow, maxCol);
 
-  // Map embedded images by Excel row number (1-based)
+  // Embedded images (nativeRow is 0-based)
   const imagesByRow = new Map<number, ParsedImage[]>();
   const sheetImages = typeof worksheet.getImages === 'function' ? worksheet.getImages() : [];
   for (const item of sheetImages) {
@@ -193,46 +200,23 @@ export async function parseExcelBuffer(
 
     const images: ParsedImage[] = [...(imagesByRow.get(r) || [])];
 
-    // Adapt: hyperlink images in image columns (demo sample.xlsx structure)
-    const colsToScan = imageCols.length > 0 ? imageCols : [];
-    for (const c of colsToScan) {
-      const val = row.getCell(c).value;
-      const href = cellHyperlink(val);
-      const text = cellText(val);
-      if (!href) {
-        // placeholder like "--" or empty → skip
-        continue;
-      }
-      if (text === '--') continue;
-      const downloaded = await downloadImage(href);
-      if (downloaded) {
-        images.push(downloaded);
-      } else {
-        // Count as one credential even if download fails (times still accurate)
-        images.push({ buffer: Buffer.alloc(0), extension: 'jpg' });
-      }
-    }
-
-    // If no image columns detected but cells have image-like hyperlinks, scan all cols
-    if (imageCols.length === 0 && images.length === 0) {
+    if (imageCols.length > 0) {
+      images.push(...collectRemoteImages(row, imageCols));
+    } else if (images.length === 0) {
+      // fallback: scan all non-user/task cols for hyperlinks
+      const scanCols: number[] = [];
       for (let c = 1; c <= maxCol; c++) {
         if (c === userCol || c === taskCol) continue;
-        const href = cellHyperlink(row.getCell(c).value);
-        if (!href) continue;
-        const downloaded = await downloadImage(href);
-        if (downloaded) images.push(downloaded);
-        else images.push({ buffer: Buffer.alloc(0), extension: 'jpg' });
+        scanCols.push(c);
       }
+      images.push(...collectRemoteImages(row, scanCols));
     }
-
-    const realImages = images.filter((img) => img.buffer.length > 0);
-    const imageCount = images.length; // count includes failed downloads that represent a credential slot
 
     rows.push({
       userId,
       taskName,
-      imageCount,
-      images: realImages,
+      imageCount: images.length,
+      images,
       rowIndex: r,
     });
   }
