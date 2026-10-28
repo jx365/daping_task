@@ -9,6 +9,7 @@ export async function GET() {
   const checks: Record<string, unknown> = {
     ok: true,
     time: new Date().toISOString(),
+    node: process.version,
     paths: { DATA_DIR, UPLOAD_DIR, DB_PATH },
   };
 
@@ -25,7 +26,8 @@ export async function GET() {
     const db = getDb();
     const row = db.prepare('SELECT COUNT(*) AS c FROM summary').get() as { c: number };
     checks.db = true;
-    checks.summaryCount = row.c;
+    checks.engine = 'node:sqlite';
+    checks.summaryCount = row?.c ?? 0;
   } catch (e) {
     checks.db = false;
     checks.dbError = e instanceof Error ? e.message : String(e);

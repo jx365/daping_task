@@ -1,23 +1,82 @@
-import type BetterSqlite3 from 'better-sqlite3';
+/**
+ * 使用 Node 22 内置 node:sqlite（无 better-sqlite3 原生 addon），
+ * 避免 Docker 中 Segmentation fault。
+ */
 import { DB_PATH, ensureDataDirs } from './paths';
 
-type DatabaseInstance = BetterSqlite3.Database;
+type SqlValue = string | number | bigint | null | Uint8Array;
 
-const globalForDb = globalThis as unknown as { __taskStatsDb?: DatabaseInstance };
+type Stmt = {
+  run: (...params: SqlValue[]) => { changes: number; lastInsertRowid: number | bigint };
+  get: (...params: SqlValue[]) => Record<string, unknown> | undefined;
+  all: (...params: SqlValue[]) => Record<string, unknown>[];
+};
 
-function loadBetterSqlite3(): typeof BetterSqlite3 {
-  // Lazy-load native addon. Importing it during Next.js "Generating static pages"
-  // worker processes often causes SIGSEGV on small VPS.
+export type AppDatabase = {
+  prepare: (sql: string) => Stmt;
+  exec: (sql: string) => void;
+  transaction: <T>(fn: () => T) => () => T;
+};
+
+type DatabaseSyncLike = {
+  prepare: (sql: string) => {
+    run: (...params: SqlValue[]) => { changes: number; lastInsertRowid: number | bigint };
+    get: (...params: SqlValue[]) => Record<string, unknown> | undefined;
+    all: (...params: SqlValue[]) => Record<string, unknown>[];
+  };
+  exec: (sql: string) => void;
+};
+
+const globalForDb = globalThis as unknown as { __taskStatsDb?: AppDatabase };
+
+function openDatabaseSync(filePath: string): DatabaseSyncLike {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('better-sqlite3');
+  const { DatabaseSync } = require('node:sqlite') as {
+    DatabaseSync: new (path: string) => DatabaseSyncLike;
+  };
+  return new DatabaseSync(filePath);
 }
 
-function createDb(): DatabaseInstance {
+function wrapDb(raw: DatabaseSyncLike): AppDatabase {
+  return {
+    prepare(sql: string) {
+      const stmt = raw.prepare(sql);
+      return {
+        run: (...params: SqlValue[]) => stmt.run(...params),
+        get: (...params: SqlValue[]) => stmt.get(...params),
+        all: (...params: SqlValue[]) => stmt.all(...params),
+      };
+    },
+    exec(sql: string) {
+      raw.exec(sql);
+    },
+    transaction<T>(fn: () => T) {
+      return () => {
+        raw.exec('BEGIN');
+        try {
+          const result = fn();
+          raw.exec('COMMIT');
+          return result;
+        } catch (e) {
+          try {
+            raw.exec('ROLLBACK');
+          } catch {
+            // ignore
+          }
+          throw e;
+        }
+      };
+    },
+  };
+}
+
+function createDb(): AppDatabase {
   ensureDataDirs();
-  const Database = loadBetterSqlite3();
-  const db = new Database(DB_PATH);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  const raw = openDatabaseSync(DB_PATH);
+  const db = wrapDb(raw);
+
+  db.exec('PRAGMA journal_mode = WAL;');
+  db.exec('PRAGMA foreign_keys = ON;');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS records (
@@ -63,7 +122,7 @@ function createDb(): DatabaseInstance {
   return db;
 }
 
-export function getDb(): DatabaseInstance {
+export function getDb(): AppDatabase {
   if (process.env.NEXT_PHASE === 'phase-production-build') {
     throw new Error('Database is not available during Next.js build');
   }
