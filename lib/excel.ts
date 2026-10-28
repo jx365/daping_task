@@ -317,7 +317,8 @@ export async function buildExportBuffer(
     details: DetailItem[];
   }[]
 ): Promise<Buffer> {
-  const workbook = new ExcelJS.Workbook();
+  const ExcelJSLib = loadExcelJS();
+  const workbook = new ExcelJSLib.Workbook();
   const sheet = workbook.addWorksheet('汇总');
 
   sheet.columns = [
