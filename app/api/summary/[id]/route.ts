@@ -28,7 +28,7 @@ export async function PATCH(
 
   const body = await req.json();
   const updates: string[] = [];
-  const values: unknown[] = [];
+  const values: Array<string | number> = [];
 
   if (typeof body.total_times === 'number') {
     updates.push('total_times = ?');

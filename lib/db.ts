@@ -4,12 +4,13 @@
  */
 import { DB_PATH, ensureDataDirs } from './paths';
 
-type SqlValue = string | number | bigint | null | Uint8Array;
+export type SqlValue = string | number | bigint | boolean | null | Uint8Array;
 
 type Stmt = {
-  run: (...params: SqlValue[]) => { changes: number; lastInsertRowid: number | bigint };
-  get: (...params: SqlValue[]) => Record<string, unknown> | undefined;
-  all: (...params: SqlValue[]) => Record<string, unknown>[];
+  // 放宽为 unknown，避免业务层拼动态参数时类型过严
+  run: (...params: unknown[]) => { changes: number; lastInsertRowid: number | bigint };
+  get: (...params: unknown[]) => Record<string, unknown> | undefined;
+  all: (...params: unknown[]) => Record<string, unknown>[];
 };
 
 export type AppDatabase = {
@@ -42,9 +43,9 @@ function wrapDb(raw: DatabaseSyncLike): AppDatabase {
     prepare(sql: string) {
       const stmt = raw.prepare(sql);
       return {
-        run: (...params: SqlValue[]) => stmt.run(...params),
-        get: (...params: SqlValue[]) => stmt.get(...params),
-        all: (...params: SqlValue[]) => stmt.all(...params),
+        run: (...params: unknown[]) => stmt.run(...(params as SqlValue[])),
+        get: (...params: unknown[]) => stmt.get(...(params as SqlValue[])),
+        all: (...params: unknown[]) => stmt.all(...(params as SqlValue[])),
       };
     },
     exec(sql: string) {
