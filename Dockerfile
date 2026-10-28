@@ -13,15 +13,18 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS="--max-old-space-size=1536"
 RUN npm run build
 
+# 不用 standalone 叠加 node_modules（会弄丢/弄坏子依赖，如 generator-function）
+# 直接用完整依赖 + next start，上传解析更稳
 FROM --platform=linux/amd64 node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/package-lock.json ./package-lock.json
+COPY --from=builder /app/next.config.js ./next.config.js
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-# standalone 有时会漏掉 exceljs / better-sqlite3 及其依赖，整包覆盖更稳
+COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 RUN mkdir -p /data/uploads && chmod -R 777 /data
 VOLUME /data
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["npx", "next", "start", "-H", "0.0.0.0", "-p", "3000"]
