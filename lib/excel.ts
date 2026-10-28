@@ -1,8 +1,8 @@
 import ExcelJS from 'exceljs';
 import fs from 'fs';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
-import { UPLOAD_DIR } from './paths';
+import { randomUUID } from 'crypto';
+import { UPLOAD_DIR, ensureDataDirs } from './paths';
 import { getDb } from './db';
 import type { DetailItem } from './summary';
 
@@ -125,12 +125,13 @@ export function computeTimes(imageCount: number, base: number): number {
 }
 
 function saveImage(img: ParsedImage): string {
+  ensureDataDirs();
   if (img.remoteUrl) {
-    const name = `${uuidv4()}.ref`;
+    const name = `${randomUUID()}.ref`;
     fs.writeFileSync(path.join(UPLOAD_DIR, name), img.remoteUrl, 'utf8');
     return name;
   }
-  const name = `${uuidv4()}.${img.extension || 'jpg'}`;
+  const name = `${randomUUID()}.${img.extension || 'jpg'}`;
   fs.writeFileSync(path.join(UPLOAD_DIR, name), img.buffer || Buffer.alloc(0));
   return name;
 }

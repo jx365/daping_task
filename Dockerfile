@@ -10,8 +10,6 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-# 轻量服务器内存通常只有 1~2G，不要设 4096（反而 OOM/SIGSEGV）
-# 限制为约 1.5G，并用单进程构建降低并行压力
 ENV NODE_OPTIONS="--max-old-space-size=1536"
 RUN npm run build
 
@@ -21,7 +19,9 @@ ENV NODE_ENV=production PORT=3000
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-RUN mkdir -p /data/uploads
+# standalone 有时会漏掉 exceljs / better-sqlite3 及其依赖，整包覆盖更稳
+COPY --from=builder /app/node_modules ./node_modules
+RUN mkdir -p /data/uploads && chmod -R 777 /data
 VOLUME /data
 EXPOSE 3000
 CMD ["node", "server.js"]

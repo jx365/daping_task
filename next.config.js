@@ -7,6 +7,17 @@ const nextConfig = {
     cpus: 1,
     workerThreads: false,
   },
+  // 确保 API 在 standalone 镜像中能找到原生/重型依赖
+  outputFileTracingIncludes: {
+    '/api/**/*': [
+      './node_modules/better-sqlite3/**/*',
+      './node_modules/exceljs/**/*',
+    ],
+    '/*': [
+      './node_modules/better-sqlite3/**/*',
+      './node_modules/exceljs/**/*',
+    ],
+  },
 };
 
 module.exports = nextConfig;
