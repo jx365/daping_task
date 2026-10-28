@@ -1,8 +1,10 @@
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
+# 把 Debian 源换成阿里云，解决 apt-get 过慢
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
-RUN npm ci
+RUN npm config set registry https://registry.npmmirror.com && npm ci
 
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
