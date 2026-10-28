@@ -1,11 +1,20 @@
-import Database from 'better-sqlite3';
+import type BetterSqlite3 from 'better-sqlite3';
 import { DB_PATH, ensureDataDirs } from './paths';
 
-ensureDataDirs();
+type DatabaseInstance = BetterSqlite3.Database;
 
-const globalForDb = globalThis as unknown as { __taskStatsDb?: Database.Database };
+const globalForDb = globalThis as unknown as { __taskStatsDb?: DatabaseInstance };
 
-function createDb() {
+function loadBetterSqlite3(): typeof BetterSqlite3 {
+  // Lazy-load native addon. Importing it during Next.js "Generating static pages"
+  // worker processes often causes SIGSEGV on small VPS.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('better-sqlite3');
+}
+
+function createDb(): DatabaseInstance {
+  ensureDataDirs();
+  const Database = loadBetterSqlite3();
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
@@ -54,7 +63,10 @@ function createDb() {
   return db;
 }
 
-export function getDb(): Database.Database {
+export function getDb(): DatabaseInstance {
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    throw new Error('Database is not available during Next.js build');
+  }
   if (!globalForDb.__taskStatsDb) {
     globalForDb.__taskStatsDb = createDb();
   }

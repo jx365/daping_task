@@ -9,11 +9,10 @@ FROM --platform=linux/amd64 node:20-bookworm-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# 强制限制构建并发，数值越小越稳定
-ENV CIRCLE_NODE_TOTAL=2
-# 为每个 Worker 进程分配内存上限，避免堆内存耗尽
-ENV NODE_OPTIONS="--max-old-space-size=4096"
 ENV NEXT_TELEMETRY_DISABLED=1
+# 轻量服务器内存通常只有 1~2G，不要设 4096（反而 OOM/SIGSEGV）
+# 限制为约 1.5G，并用单进程构建降低并行压力
+ENV NODE_OPTIONS="--max-old-space-size=1536"
 RUN npm run build
 
 FROM --platform=linux/amd64 node:20-bookworm-slim AS runner

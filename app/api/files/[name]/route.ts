@@ -5,6 +5,8 @@ import { UPLOAD_DIR, ensureDataDirs } from '@/lib/paths';
 
 export const runtime = 'nodejs';
 
+export const dynamic = 'force-dynamic';
+
 const MIME: Record<string, string> = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',

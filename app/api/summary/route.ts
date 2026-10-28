@@ -4,6 +4,8 @@ import { ensureDataDirs } from '@/lib/paths';
 
 export const runtime = 'nodejs';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   ensureDataDirs();
   const db = getDb();

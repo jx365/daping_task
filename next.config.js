@@ -3,8 +3,9 @@ const nextConfig = {
   output: 'standalone',
   experimental: {
     serverComponentsExternalPackages: ['better-sqlite3', 'exceljs'],
-    // 限制静态生成 Worker 并发，降低小内存机器构建时 OOM/SIGSEGV 风险
+    // 单 CPU 构建，避免静态生成并行 Worker 在小内存机上 SIGSEGV
     cpus: 1,
+    workerThreads: false,
   },
 };
 
