@@ -170,7 +170,7 @@ export default function UploadModal({ open, files, token, onClose, onDone, onErr
             <span>
               <span className="block text-slate-900">覆盖同名任务的已有数据</span>
               <span className="text-sm text-slate-500">
-                （勾选后若已存在同名任务，先清旧数据再导入）
+                （勾选后若已存在同名任务，先清旧数据再导入；后台手动新增的条目不会被清除）
               </span>
             </span>
           </label>

@@ -120,6 +120,12 @@ function createDb(): AppDatabase {
     );
   `);
 
+  // 幂等迁移：手动条目标记（老库升级不影响已有数据）
+  const cols = db.prepare('PRAGMA table_info(records)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'is_manual')) {
+    db.exec('ALTER TABLE records ADD COLUMN is_manual INTEGER DEFAULT 0;');
+  }
+
   return db;
 }
 

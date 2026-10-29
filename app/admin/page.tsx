@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import UploadModal from '../components/UploadModal';
 import Lightbox from '../components/Lightbox';
@@ -13,6 +13,7 @@ type SummaryItem = {
   sub_ids: string[];
   total_times: number;
   details: Detail[];
+  manual?: boolean;
 };
 type AccountLink = { id: number; main_id: string; sub_id: string };
 
@@ -27,6 +28,27 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 const MAX_FILE = 30 * 1024 * 1024;
+
+function parseDetailsText(text: string, prev: Detail[] = []): Detail[] {
+  const lines = text
+    .split(/\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return lines.map((line) => {
+    const m = line.match(/^(.*?)(?:\s*[×xX]\s*(\d+))?$/);
+    const task = (m?.[1] || line).trim();
+    const times = m?.[2] ? Number(m[2]) : 1;
+    const old = prev.find((d) => d.task === task);
+    return { task, times: Number.isFinite(times) ? times : 1, images: old?.images || [] };
+  });
+}
+
+function matchesSearch(item: SummaryItem, term: string): boolean {
+  const q = term.trim().toLowerCase();
+  if (!q) return false;
+  if (item.user_id.toLowerCase().includes(q)) return true;
+  return (item.sub_ids || []).some((s) => s.toLowerCase().includes(q));
+}
 
 export default function AdminPage() {
   const router = useRouter();
@@ -50,6 +72,14 @@ export default function AdminPage() {
   const [editDrafts, setEditDrafts] = useState<
     Record<number, { total_times: number; detailsText: string }>
   >({});
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [matchIndex, setMatchIndex] = useState(0);
+  const [highlightId, setHighlightId] = useState<number | null>(null);
+
+  const [newUserId, setNewUserId] = useState('');
+  const [newDetailsText, setNewDetailsText] = useState('');
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     const t = sessionStorage.getItem('adminToken');
@@ -83,6 +113,34 @@ export default function AdminPage() {
     if (tab === 'view' || tab === 'edit') loadSummaries();
     if (tab === 'accounts') loadAccounts();
   }, [token, tab, loadSummaries, loadAccounts]);
+
+  const matchIds = useMemo(
+    () => summaries.filter((s) => matchesSearch(s, searchTerm)).map((s) => s.id),
+    [summaries, searchTerm]
+  );
+
+  function locateMatch(next = true) {
+    if (matchIds.length === 0) {
+      setToast('未找到匹配的用户');
+      setHighlightId(null);
+      return;
+    }
+    const idx = next
+      ? matchIndex % matchIds.length
+      : (matchIndex - 1 + matchIds.length) % matchIds.length;
+    const id = matchIds[idx];
+    setMatchIndex((idx + 1) % matchIds.length);
+    setHighlightId(id);
+    setExpanded(id);
+    requestAnimationFrame(() => {
+      const nodes = document.querySelectorAll(`[data-summary-id="${id}"]`);
+      const el = Array.from(nodes).find((n) => {
+        const style = window.getComputedStyle(n as HTMLElement);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+      }) as HTMLElement | undefined;
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
@@ -151,20 +209,6 @@ export default function AdminPage() {
     loadSummaries();
   }
 
-  function parseDetailsText(text: string, prev: Detail[]): Detail[] {
-    const lines = text
-      .split(/\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    return lines.map((line) => {
-      const m = line.match(/^(.*?)(?:\s*[×xX]\s*(\d+))?$/);
-      const task = (m?.[1] || line).trim();
-      const times = m?.[2] ? Number(m[2]) : 1;
-      const old = prev.find((d) => d.task === task);
-      return { task, times: Number.isFinite(times) ? times : 1, images: old?.images || [] };
-    });
-  }
-
   async function saveRow(item: SummaryItem) {
     const draft = editDrafts[item.id];
     if (!draft) return;
@@ -186,7 +230,7 @@ export default function AdminPage() {
   }
 
   async function deleteRow(id: number) {
-    if (!confirm('确认删除该行？此操作不可撤销。')) return;
+    if (!confirm('确认删除该行？手动条目会被彻底删除；Excel 来源行重算后可能恢复。')) return;
     const res = await fetch(`/api/summary/${id}`, {
       method: 'DELETE',
       headers: { 'x-admin-token': token },
@@ -197,6 +241,60 @@ export default function AdminPage() {
     }
     setToast('已删除');
     loadSummaries();
+  }
+
+  async function createManual(e: FormEvent) {
+    e.preventDefault();
+    const user_id = newUserId.trim();
+    const details = parseDetailsText(newDetailsText);
+    if (!user_id) {
+      setToast('请填写用户 ID');
+      return;
+    }
+    if (details.length === 0) {
+      setToast('请至少填写一条明细（任务名 ×次数）');
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch('/api/summary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': token,
+        },
+        body: JSON.stringify({ user_id, details }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setToast(data.error || '创建失败');
+        return;
+      }
+      setToast(`已新增：${user_id}（共 ${data.total_times} 次）`);
+      setNewUserId('');
+      setNewDetailsText('');
+      setSearchTerm(user_id);
+      setMatchIndex(0);
+      await loadSummaries();
+      setTimeout(() => {
+        const q = user_id.toLowerCase();
+        const nodes = document.querySelectorAll('[data-summary-id]');
+        for (const n of Array.from(nodes)) {
+          const text = (n as HTMLElement).innerText.toLowerCase();
+          if (text.includes(q)) {
+            const id = Number((n as HTMLElement).getAttribute('data-summary-id'));
+            setHighlightId(id);
+            setExpanded(id);
+            (n as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+            break;
+          }
+        }
+      }, 150);
+    } catch {
+      setToast('创建失败');
+    } finally {
+      setCreating(false);
+    }
   }
 
   function downloadExport() {
@@ -364,23 +462,81 @@ export default function AdminPage() {
         )}
 
         {tab === 'view' && (
-          <SummaryView
-            items={summaries}
-            expanded={expanded}
-            setExpanded={setExpanded}
-            onOpenImage={setLightbox}
-          />
+          <div className="space-y-4">
+            <SummarySearchBar
+              term={searchTerm}
+              setTerm={(v) => {
+                setSearchTerm(v);
+                setMatchIndex(0);
+              }}
+              matchCount={matchIds.length}
+              onLocate={() => locateMatch(true)}
+            />
+            <SummaryView
+              items={summaries}
+              expanded={expanded}
+              setExpanded={setExpanded}
+              highlightId={highlightId}
+              onOpenImage={setLightbox}
+            />
+          </div>
         )}
 
         {tab === 'edit' && (
           <div className="space-y-4">
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              提示：重新上传或修改账号关联后，手动编辑内容会被重算覆盖。
+              提示：重新上传或修改账号关联后，仅「手动编辑」的总次数/明细可能被重算覆盖；后台「新增条目」写入的手动数据会作为数据源参与汇总，上传覆盖不会清除。
             </p>
+
+            <form
+              onSubmit={createManual}
+              className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4"
+            >
+              <div className="font-medium text-slate-800">新增条目</div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-500">用户 ID</label>
+                <input
+                  className="min-h-11 w-full rounded-lg border px-3"
+                  value={newUserId}
+                  onChange={(e) => setNewUserId(e.target.value)}
+                  placeholder="输入新用户 ID / 昵称"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-slate-500">
+                  参与明细（每行：任务名 ×次数）
+                </label>
+                <textarea
+                  className="min-h-[96px] w-full rounded-lg border px-3 py-2 text-sm"
+                  value={newDetailsText}
+                  onChange={(e) => setNewDetailsText(e.target.value)}
+                  placeholder={'A任务 ×1\nB任务 ×2'}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={creating}
+                className="min-h-11 w-full rounded-lg bg-sky-600 text-white active:bg-sky-700 disabled:opacity-60 md:w-auto md:px-6"
+              >
+                {creating ? '创建中…' : '创建'}
+              </button>
+            </form>
+
+            <SummarySearchBar
+              term={searchTerm}
+              setTerm={(v) => {
+                setSearchTerm(v);
+                setMatchIndex(0);
+              }}
+              matchCount={matchIds.length}
+              onLocate={() => locateMatch(true)}
+            />
+
             <SummaryEdit
               items={summaries}
               drafts={editDrafts}
               setDrafts={setEditDrafts}
+              highlightId={highlightId}
               onSave={saveRow}
               onDelete={deleteRow}
               onOpenImage={setLightbox}
@@ -420,31 +576,80 @@ export default function AdminPage() {
   );
 }
 
+function SummarySearchBar({
+  term,
+  setTerm,
+  matchCount,
+  onLocate,
+}: {
+  term: string;
+  setTerm: (v: string) => void;
+  matchCount: number;
+  onLocate: () => void;
+}) {
+  return (
+    <form
+      className="flex flex-col gap-2 sm:flex-row sm:items-center"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onLocate();
+      }}
+    >
+      <input
+        className="min-h-11 w-full flex-1 rounded-lg border px-3 text-base outline-none focus:border-sky-500"
+        placeholder="搜索用户 ID / 子账号，回车定位"
+        value={term}
+        onChange={(e) => setTerm(e.target.value)}
+      />
+      <div className="flex items-center gap-2">
+        <button
+          type="submit"
+          className="min-h-11 flex-1 rounded-lg bg-sky-600 px-4 text-white active:bg-sky-700 sm:flex-none"
+        >
+          定位
+        </button>
+        <span className="whitespace-nowrap text-sm text-slate-500">
+          {term.trim() ? `${matchCount} 个匹配` : '—'}
+        </span>
+      </div>
+    </form>
+  );
+}
+
 function SummaryView({
   items,
   expanded,
   setExpanded,
+  highlightId,
   onOpenImage,
 }: {
   items: SummaryItem[];
   expanded: number | null;
   setExpanded: (id: number | null) => void;
+  highlightId: number | null;
   onOpenImage: (src: string) => void;
 }) {
   return (
     <>
-      {/* mobile cards */}
       <div className="space-y-3 md:hidden">
         {items.map((item, idx) => (
           <button
             key={item.id}
             type="button"
-            className="w-full rounded-xl border p-4 text-left active:bg-slate-50"
+            data-summary-id={item.id}
+            className={`w-full rounded-xl border p-4 text-left active:bg-slate-50 ${
+              highlightId === item.id ? 'bg-sky-50 ring-2 ring-sky-400' : ''
+            }`}
             onClick={() => setExpanded(expanded === item.id ? null : item.id)}
           >
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex items-center justify-between gap-2">
               <span className="font-medium">
                 #{idx + 1} {item.user_id}
+                {item.manual && (
+                  <span className="ml-2 rounded bg-violet-100 px-1.5 py-0.5 text-xs text-violet-700">
+                    手动
+                  </span>
+                )}
               </span>
               <span className="text-sky-700">共 {item.total_times} 次</span>
             </div>
@@ -492,7 +697,6 @@ function SummaryView({
         )}
       </div>
 
-      {/* desktop table */}
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="bg-slate-50 text-slate-500">
@@ -508,11 +712,21 @@ function SummaryView({
             {items.map((item, idx) => (
               <tr
                 key={item.id}
-                className="cursor-pointer border-t align-top hover:bg-slate-50"
+                data-summary-id={item.id}
+                className={`cursor-pointer border-t align-top hover:bg-slate-50 ${
+                  highlightId === item.id ? 'bg-sky-50 ring-2 ring-inset ring-sky-400' : ''
+                }`}
                 onClick={() => setExpanded(expanded === item.id ? null : item.id)}
               >
                 <td className="px-3 py-3">{idx + 1}</td>
-                <td className="px-3 py-3 font-medium">{item.user_id}</td>
+                <td className="px-3 py-3 font-medium">
+                  {item.user_id}
+                  {item.manual && (
+                    <span className="ml-2 rounded bg-violet-100 px-1.5 py-0.5 text-xs text-violet-700">
+                      手动
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-3 text-slate-600">
                   {(item.sub_ids || []).join('、') || '—'}
                 </td>
@@ -566,6 +780,7 @@ function SummaryEdit({
   items,
   drafts,
   setDrafts,
+  highlightId,
   onSave,
   onDelete,
   onOpenImage,
@@ -575,6 +790,7 @@ function SummaryEdit({
   setDrafts: React.Dispatch<
     React.SetStateAction<Record<number, { total_times: number; detailsText: string }>>
   >;
+  highlightId: number | null;
   onSave: (item: SummaryItem) => void;
   onDelete: (id: number) => void;
   onOpenImage: (src: string) => void;
@@ -588,9 +804,20 @@ function SummaryEdit({
             detailsText: '',
           };
           return (
-            <div key={item.id} className="rounded-xl border p-4">
+            <div
+              key={item.id}
+              data-summary-id={item.id}
+              className={`rounded-xl border p-4 ${
+                highlightId === item.id ? 'bg-sky-50 ring-2 ring-sky-400' : ''
+              }`}
+            >
               <div className="mb-3 font-medium">
                 #{idx + 1} {item.user_id}
+                {item.manual && (
+                  <span className="ml-2 rounded bg-violet-100 px-1.5 py-0.5 text-xs text-violet-700">
+                    手动
+                  </span>
+                )}
               </div>
               <label className="mb-1 block text-sm text-slate-500">参与总次数</label>
               <input
@@ -676,9 +903,22 @@ function SummaryEdit({
                 detailsText: '',
               };
               return (
-                <tr key={item.id} className="border-t align-top">
+                <tr
+                  key={item.id}
+                  data-summary-id={item.id}
+                  className={`border-t align-top ${
+                    highlightId === item.id ? 'bg-sky-50 ring-2 ring-inset ring-sky-400' : ''
+                  }`}
+                >
                   <td className="px-3 py-3">{idx + 1}</td>
-                  <td className="px-3 py-3 font-medium">{item.user_id}</td>
+                  <td className="px-3 py-3 font-medium">
+                    {item.user_id}
+                    {item.manual && (
+                      <span className="ml-2 rounded bg-violet-100 px-1.5 py-0.5 text-xs text-violet-700">
+                        手动
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-3">{(item.sub_ids || []).join('、') || '—'}</td>
                   <td className="px-3 py-3">
                     <input

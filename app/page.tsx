@@ -12,6 +12,11 @@ type UserResult = {
   sub_ids: string[];
   total_times: number;
   details: Detail[];
+  rank?: number;
+  total_players?: number;
+  next_score?: number | null;
+  times_needed?: number | null;
+  target_rank?: number | null;
 };
 type BoardItem = { rank: number; user_id: string; total_times: number };
 
@@ -183,6 +188,30 @@ export default function HomePage() {
                     <div className="text-3xl font-bold text-sky-600">{result.total_times}</div>
                   </div>
                 </div>
+
+                {typeof result.rank === 'number' && (
+                  <div className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                    <div>
+                      位次：第 <span className="font-semibold">{result.rank}</span> 名
+                      {typeof result.total_players === 'number' && (
+                        <span className="text-sky-700"> / 共 {result.total_players} 人</span>
+                      )}
+                    </div>
+                    {result.rank === 1 ? (
+                      <div className="mt-1 text-amber-700">已是第 1 名</div>
+                    ) : (
+                      typeof result.times_needed === 'number' &&
+                      typeof result.target_rank === 'number' && (
+                        <div className="mt-1">
+                          再完成{' '}
+                          <span className="font-semibold">{result.times_needed}</span>{' '}
+                          次，即可成为第{' '}
+                          <span className="font-semibold">{result.target_rank}</span> 名！
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
 
                 <div className="overflow-x-auto">
                   <table className="hidden w-full min-w-[480px] text-left text-sm md:table">

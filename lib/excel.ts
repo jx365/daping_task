@@ -252,8 +252,9 @@ export function applyTimes(rows: ParsedRow[]): (ParsedRow & { times: number })[]
 
 export function deleteTaskData(taskName: string) {
   const db = getDb();
+  // 仅删除非手动行，保留后台手动新增的记录
   const records = db
-    .prepare('SELECT id FROM records WHERE task_name = ?')
+    .prepare('SELECT id FROM records WHERE task_name = ? AND IFNULL(is_manual, 0) = 0')
     .all(taskName) as { id: number }[];
   const imgStmt = db.prepare('SELECT file_name FROM images WHERE record_id = ?');
   const delImg = db.prepare('DELETE FROM images WHERE record_id = ?');
@@ -269,7 +270,9 @@ export function deleteTaskData(taskName: string) {
     }
     delImg.run(rec.id);
   }
-  db.prepare('DELETE FROM records WHERE task_name = ?').run(taskName);
+  db.prepare('DELETE FROM records WHERE task_name = ? AND IFNULL(is_manual, 0) = 0').run(
+    taskName
+  );
 }
 
 export function insertParsedRows(
@@ -278,8 +281,8 @@ export function insertParsedRows(
 ) {
   const db = getDb();
   const insertRecord = db.prepare(
-    `INSERT INTO records (user_id, owner_id, task_name, image_count, times, source_file, row_index, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO records (user_id, owner_id, task_name, image_count, times, source_file, row_index, created_at, is_manual)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`
   );
   const insertImage = db.prepare(
     `INSERT INTO images (record_id, file_name, sort) VALUES (?, ?, ?)`

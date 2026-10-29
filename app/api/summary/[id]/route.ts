@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAuthorized, unauthorized } from '@/lib/auth';
 import { getDb } from '@/lib/db';
 import { ensureDataDirs } from '@/lib/paths';
+import { rebuildSummary } from '@/lib/summary';
 
 export const runtime = 'nodejs';
 
@@ -61,9 +62,33 @@ export async function DELETE(
   ensureDataDirs();
   const db = getDb();
   const id = Number(params.id);
-  const info = db.prepare('DELETE FROM summary WHERE id = ?').run(id);
-  if (info.changes === 0) {
+
+  const row = db.prepare('SELECT user_id FROM summary WHERE id = ?').get(id) as
+    | { user_id: string }
+    | undefined;
+  if (!row) {
     return NextResponse.json({ error: '未找到' }, { status: 404 });
   }
+
+  // 删除该用户的手动 records，再删 summary；Excel 来源行下次重算仍会回来
+  const manualIds = db
+    .prepare(
+      `SELECT id FROM records
+       WHERE (user_id = ? OR owner_id = ?) AND IFNULL(is_manual, 0) = 1`
+    )
+    .all(row.user_id, row.user_id) as { id: number }[];
+  const delImg = db.prepare('DELETE FROM images WHERE record_id = ?');
+  for (const rec of manualIds) {
+    delImg.run(rec.id);
+  }
+  db.prepare(
+    `DELETE FROM records WHERE (user_id = ? OR owner_id = ?) AND IFNULL(is_manual, 0) = 1`
+  ).run(row.user_id, row.user_id);
+
+  db.prepare('DELETE FROM summary WHERE id = ?').run(id);
+
+  // 若还有 Excel 来源行，重建汇总；否则该用户从汇总消失
+  rebuildSummary();
+
   return NextResponse.json({ ok: true });
 }
