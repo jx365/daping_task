@@ -118,16 +118,9 @@ function findColumnIndexes(
   };
 }
 
-function computeBase(imageCounts: number[]): number {
-  const positive = imageCounts.filter((c) => c > 0);
-  if (positive.length === 0) return 0;
-  const freq = new Map<number, number>();
-  for (const c of positive) freq.set(c, (freq.get(c) ?? 0) + 1);
-  return Array.from(freq.entries()).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
-}
-
-export function computeTimes(imageCount: number, base: number): number {
-  return base === 0 ? 1 : Math.max(1, Math.round(imageCount / base));
+/** 新计分：1 张图片 = 1 次参与；无图为 0 */
+export function computeTimes(imageCount: number): number {
+  return Math.max(0, Math.floor(Number(imageCount) || 0));
 }
 
 function saveImage(img: ParsedImage): string {
@@ -246,8 +239,7 @@ export async function parseExcelBuffer(
 }
 
 export function applyTimes(rows: ParsedRow[]): (ParsedRow & { times: number })[] {
-  const base = computeBase(rows.map((r) => r.imageCount));
-  return rows.map((r) => ({ ...r, times: computeTimes(r.imageCount, base) }));
+  return rows.map((r) => ({ ...r, times: computeTimes(r.imageCount) }));
 }
 
 export function deleteTaskData(taskName: string) {

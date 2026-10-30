@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAuthorized, unauthorized } from '@/lib/auth';
-import { getDb } from '@/lib/db';
+import { getDb, type SummaryRow } from '@/lib/db';
 import { ensureDataDirs } from '@/lib/paths';
 import { rebuildSummary } from '@/lib/summary';
 
@@ -21,7 +21,7 @@ export async function PATCH(
   }
 
   const existing = db.prepare('SELECT * FROM summary WHERE id = ?').get(id) as
-    | { id: number }
+    | SummaryRow
     | undefined;
   if (!existing) {
     return NextResponse.json({ error: '未找到' }, { status: 404 });
@@ -31,9 +31,17 @@ export async function PATCH(
   const updates: string[] = [];
   const values: Array<string | number> = [];
 
+  const currentOffset = Number(existing.manual_offset_times) || 0;
+  const currentAuto = Number(existing.total_times) - currentOffset;
+
   if (typeof body.total_times === 'number') {
+    const desired = Math.max(0, Math.floor(body.total_times));
+    // 偏移量 = 期望展示值 - 当前自动计算值；后续 rebuild 用 auto + offset
+    const newOffset = desired - currentAuto;
     updates.push('total_times = ?');
-    values.push(Math.max(0, Math.floor(body.total_times)));
+    values.push(desired);
+    updates.push('manual_offset_times = ?');
+    values.push(newOffset);
   }
   if (body.details !== undefined) {
     updates.push('details = ?');
@@ -70,7 +78,6 @@ export async function DELETE(
     return NextResponse.json({ error: '未找到' }, { status: 404 });
   }
 
-  // 删除该用户的手动 records，再删 summary；Excel 来源行下次重算仍会回来
   const manualIds = db
     .prepare(
       `SELECT id FROM records
@@ -85,9 +92,9 @@ export async function DELETE(
     `DELETE FROM records WHERE (user_id = ? OR owner_id = ?) AND IFNULL(is_manual, 0) = 1`
   ).run(row.user_id, row.user_id);
 
+  // 删除 summary 行（含偏移量）；若还有 Excel 行，rebuild 会重建且 offset 清零
   db.prepare('DELETE FROM summary WHERE id = ?').run(id);
 
-  // 若还有 Excel 来源行，重建汇总；否则该用户从汇总消失
   rebuildSummary();
 
   return NextResponse.json({ ok: true });

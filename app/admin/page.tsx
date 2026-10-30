@@ -14,6 +14,8 @@ type SummaryItem = {
   total_times: number;
   details: Detail[];
   manual?: boolean;
+  manual_offset_times?: number;
+  auto_times?: number;
 };
 type AccountLink = { id: number; main_id: string; sub_id: string };
 
@@ -129,16 +131,31 @@ export default function AdminPage() {
       ? matchIndex % matchIds.length
       : (matchIndex - 1 + matchIds.length) % matchIds.length;
     const id = matchIds[idx];
+    const row = summaries.find((s) => s.id === id);
     setMatchIndex((idx + 1) % matchIds.length);
     setHighlightId(id);
     setExpanded(id);
     requestAnimationFrame(() => {
-      const nodes = document.querySelectorAll(`[data-summary-id="${id}"]`);
-      const el = Array.from(nodes).find((n) => {
-        const style = window.getComputedStyle(n as HTMLElement);
+      const candidates: HTMLElement[] = [];
+      if (row) {
+        document
+          .querySelectorAll(`#row-${CSS.escape(row.user_id)}`)
+          .forEach((n) => candidates.push(n as HTMLElement));
+      }
+      document
+        .querySelectorAll(`[data-summary-id="${id}"]`)
+        .forEach((n) => candidates.push(n as HTMLElement));
+      const el = candidates.find((n) => {
+        const style = window.getComputedStyle(n);
         return style.display !== 'none' && style.visibility !== 'hidden';
-      }) as HTMLElement | undefined;
+      });
       el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (el) {
+        el.classList.add('bg-yellow-100', 'transition-colors', 'duration-500');
+        window.setTimeout(() => {
+          el.classList.remove('bg-yellow-100');
+        }, 2000);
+      }
     });
   }
 
@@ -636,8 +653,9 @@ function SummaryView({
           <button
             key={item.id}
             type="button"
+            id={`row-${item.user_id}`}
             data-summary-id={item.id}
-            className={`w-full rounded-xl border p-4 text-left active:bg-slate-50 ${
+            className={`w-full rounded-xl border p-4 text-left transition-colors duration-500 active:bg-slate-50 ${
               highlightId === item.id ? 'bg-sky-50 ring-2 ring-sky-400' : ''
             }`}
             onClick={() => setExpanded(expanded === item.id ? null : item.id)}
@@ -712,8 +730,9 @@ function SummaryView({
             {items.map((item, idx) => (
               <tr
                 key={item.id}
+                id={`row-${item.user_id}`}
                 data-summary-id={item.id}
-                className={`cursor-pointer border-t align-top hover:bg-slate-50 ${
+                className={`cursor-pointer border-t align-top transition-colors duration-500 hover:bg-slate-50 ${
                   highlightId === item.id ? 'bg-sky-50 ring-2 ring-inset ring-sky-400' : ''
                 }`}
                 onClick={() => setExpanded(expanded === item.id ? null : item.id)}
@@ -803,11 +822,13 @@ function SummaryEdit({
             total_times: item.total_times,
             detailsText: '',
           };
+          const offset = Number(item.manual_offset_times) || 0;
           return (
             <div
               key={item.id}
+              id={`row-${item.user_id}`}
               data-summary-id={item.id}
-              className={`rounded-xl border p-4 ${
+              className={`rounded-xl border p-4 transition-colors duration-500 ${
                 highlightId === item.id ? 'bg-sky-50 ring-2 ring-sky-400' : ''
               }`}
             >
@@ -822,7 +843,7 @@ function SummaryEdit({
               <label className="mb-1 block text-sm text-slate-500">参与总次数</label>
               <input
                 type="number"
-                className="mb-3 min-h-11 w-full rounded-lg border px-3"
+                className="mb-1 min-h-11 w-full rounded-lg border px-3"
                 value={draft.total_times}
                 onChange={(e) =>
                   setDrafts((prev) => ({
@@ -831,6 +852,13 @@ function SummaryEdit({
                   }))
                 }
               />
+              {offset !== 0 ? (
+                <p className="mb-3 text-xs text-slate-400">
+                  含手动调整 {offset > 0 ? `+${offset}` : offset}
+                </p>
+              ) : (
+                <div className="mb-3" />
+              )}
               <label className="mb-1 block text-sm text-slate-500">
                 参与明细（每行：任务名 ×次数）
               </label>
@@ -902,11 +930,13 @@ function SummaryEdit({
                 total_times: item.total_times,
                 detailsText: '',
               };
+              const offset = Number(item.manual_offset_times) || 0;
               return (
                 <tr
                   key={item.id}
+                  id={`row-${item.user_id}`}
                   data-summary-id={item.id}
-                  className={`border-t align-top ${
+                  className={`border-t align-top transition-colors duration-500 ${
                     highlightId === item.id ? 'bg-sky-50 ring-2 ring-inset ring-sky-400' : ''
                   }`}
                 >
@@ -935,6 +965,11 @@ function SummaryEdit({
                         }))
                       }
                     />
+                    {offset !== 0 && (
+                      <div className="mt-1 text-xs text-slate-400">
+                        含手动调整 {offset > 0 ? `+${offset}` : offset}
+                      </div>
+                    )}
                   </td>
                   <td className="max-w-[480px] px-3 py-3">
                     <textarea

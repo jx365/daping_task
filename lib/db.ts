@@ -111,7 +111,8 @@ function createDb(): AppDatabase {
       sub_ids TEXT DEFAULT '[]',
       total_times INTEGER DEFAULT 0,
       details TEXT DEFAULT '[]',
-      updated_at TEXT
+      updated_at TEXT,
+      manual_offset_times INTEGER DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS meta (
@@ -121,9 +122,14 @@ function createDb(): AppDatabase {
   `);
 
   // 幂等迁移：手动条目标记（老库升级不影响已有数据）
-  const cols = db.prepare('PRAGMA table_info(records)').all() as { name: string }[];
-  if (!cols.some((c) => c.name === 'is_manual')) {
+  const recordCols = db.prepare('PRAGMA table_info(records)').all() as { name: string }[];
+  if (!recordCols.some((c) => c.name === 'is_manual')) {
     db.exec('ALTER TABLE records ADD COLUMN is_manual INTEGER DEFAULT 0;');
+  }
+
+  const summaryCols = db.prepare('PRAGMA table_info(summary)').all() as { name: string }[];
+  if (!summaryCols.some((c) => c.name === 'manual_offset_times')) {
+    db.exec('ALTER TABLE summary ADD COLUMN manual_offset_times INTEGER DEFAULT 0;');
   }
 
   return db;
@@ -158,6 +164,7 @@ export type SummaryRow = {
   total_times: number;
   details: string;
   updated_at: string | null;
+  manual_offset_times?: number | null;
 };
 
 export type AccountLinkRow = {

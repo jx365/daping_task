@@ -34,6 +34,17 @@ export default function HomePage() {
   const [password, setPassword] = useState('');
   const [toast, setToast] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!result) return;
+    const t = window.setTimeout(() => {
+      document.getElementById('search-result')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [result]);
+
   const loadBoard = useCallback(async () => {
     try {
       const res = await fetch('/api/leaderboard');
@@ -165,7 +176,10 @@ export default function HomePage() {
             )}
 
             {result && (
-              <div className="space-y-4 rounded-xl border border-slate-200 p-4">
+              <div
+                id="search-result"
+                className="space-y-4 rounded-xl border border-slate-200 p-4"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="text-sm text-slate-500">用户 ID</div>

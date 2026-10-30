@@ -12,8 +12,32 @@ function nowStr() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+/** 从 records 计算某主账号的自动次数（不含 manual_offset） */
+export function computeAutoTimesForUser(userId: string): number {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT IFNULL(SUM(times), 0) AS s FROM records
+       WHERE owner_id = ? OR user_id = ?`
+    )
+    .get(userId, userId) as { s: number };
+  return Number(row?.s ?? 0);
+}
+
 export function rebuildSummary() {
   const db = getDb();
+
+  // 保留手动偏移量，避免重算覆盖管理员调整
+  const offsetRows = db
+    .prepare(
+      `SELECT user_id, IFNULL(manual_offset_times, 0) AS o FROM summary`
+    )
+    .all() as { user_id: string; o: number }[];
+  const offsets = new Map<string, number>();
+  for (const r of offsetRows) {
+    const o = Number(r.o) || 0;
+    if (o !== 0) offsets.set(r.user_id, o);
+  }
 
   const links = db
     .prepare('SELECT main_id, sub_id FROM account_links')
@@ -76,26 +100,39 @@ export function rebuildSummary() {
     }
   }
 
-  // Also ensure main accounts that only appear as mains (with subs) exist even with 0?
-  // Spec: rebuild from records only — empty if no records.
+  // 仅有手动偏移、尚无 records 的用户也要保留
+  for (const userId of offsets.keys()) {
+    if (!byOwner.has(userId)) {
+      byOwner.set(userId, new Map());
+    }
+  }
 
   const clear = db.transaction(() => {
     db.prepare('DELETE FROM summary').run();
     const insert = db.prepare(
-      `INSERT INTO summary (user_id, sub_ids, total_times, details, updated_at)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO summary (user_id, sub_ids, total_times, details, updated_at, manual_offset_times)
+       VALUES (?, ?, ?, ?, ?, ?)`
     );
     const updatedAt = nowStr();
     for (const [ownerId, taskMap] of Array.from(byOwner.entries())) {
       const details: DetailItem[] = [];
-      let total = 0;
+      let autoTotal = 0;
       for (const [task, agg] of Array.from(taskMap.entries())) {
         details.push({ task, times: agg.times, images: agg.images });
-        total += agg.times;
+        autoTotal += agg.times;
       }
       details.sort((a, b) => a.task.localeCompare(b.task, 'zh'));
+      const offset = offsets.get(ownerId) || 0;
+      const total = autoTotal + offset;
       const subs = mainToSubs.get(ownerId) || [];
-      insert.run(ownerId, JSON.stringify(subs), total, JSON.stringify(details), updatedAt);
+      insert.run(
+        ownerId,
+        JSON.stringify(subs),
+        total,
+        JSON.stringify(details),
+        updatedAt,
+        offset
+      );
     }
     db.prepare(
       `INSERT INTO meta (key, value) VALUES ('last_update', ?)
