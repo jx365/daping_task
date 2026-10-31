@@ -12,7 +12,7 @@ export async function GET() {
   const db = getDb();
   const rows = db
     .prepare(
-      'SELECT user_id, total_times FROM summary ORDER BY total_times DESC, user_id ASC LIMIT 30'
+      'SELECT user_id, total_times FROM summary ORDER BY total_times DESC, user_id ASC LIMIT 48'
     )
     .all() as Pick<SummaryRow, 'user_id' | 'total_times'>[];
 

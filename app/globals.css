@@ -15,3 +15,237 @@ body {
 * {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* ========== 奖励公告 ========== */
+.reward-hero {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(251, 113, 133, 0.18), transparent 70%),
+    linear-gradient(160deg, #fff7f9 0%, #fff 45%, #fffbeb 100%);
+  border: 1px solid rgba(251, 113, 133, 0.2);
+  box-shadow: 0 8px 28px rgba(244, 63, 94, 0.08);
+}
+
+@keyframes reward-sparkle {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.9) translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15) translateY(-3px);
+  }
+}
+
+.reward-sparkle {
+  animation: reward-sparkle 2.4s ease-in-out infinite;
+}
+
+.reward-sparkle-delay {
+  animation: reward-sparkle 2.4s ease-in-out 1.1s infinite;
+}
+
+.reward-top1-card {
+  background: linear-gradient(110deg, #fff7ed, #fef3c7, #ffe4e6);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.2), 0 6px 20px rgba(245, 158, 11, 0.2);
+  animation: top1-glow 2.8s ease-in-out infinite;
+}
+
+@keyframes top1-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.25), 0 6px 18px rgba(245, 158, 11, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.45), 0 8px 28px rgba(244, 63, 94, 0.22);
+  }
+}
+
+/* ========== 排行榜分组 ========== */
+.lb-header-g1 h3 {
+  background: linear-gradient(90deg, #b45309, #e11d48, #d97706);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.lb-header-g2 h3 {
+  color: #0369a1;
+}
+
+.lb-header-g3 h3 {
+  color: #64748b;
+}
+
+.lb-panel-g1 {
+  border-color: rgba(245, 158, 11, 0.45);
+  box-shadow: 0 0 24px rgba(251, 191, 36, 0.18), 0 8px 24px rgba(244, 63, 94, 0.06);
+  background: linear-gradient(180deg, #fffbeb 0%, #fff 40%);
+}
+
+.lb-panel-g2 {
+  border-color: rgba(56, 189, 248, 0.4);
+  box-shadow: 0 4px 16px rgba(14, 165, 233, 0.1);
+  background: linear-gradient(180deg, #f0f9ff 0%, #fff 50%);
+}
+
+.lb-panel-g3 {
+  border-color: rgba(148, 163, 184, 0.45);
+  box-shadow: 0 2px 10px rgba(100, 116, 139, 0.08);
+  background: linear-gradient(180deg, #f8fafc 0%, #fff 55%);
+}
+
+.lb-row {
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.lb-row td:last-child {
+  color: #0369a1;
+}
+
+/* 第 1 名：略增强 */
+.lb-rank-1 {
+  background: linear-gradient(
+    105deg,
+    #fff7ed 0%,
+    #fde68a 25%,
+    #fecdd3 50%,
+    #fef08a 75%,
+    #fff7ed 100%
+  );
+  background-size: 240% 100%;
+  animation: lb-shimmer 2.5s ease-in-out infinite, lb-pulse-gold 2.1s ease-in-out infinite;
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.48), 0 0 16px rgba(251, 191, 36, 0.34);
+}
+
+.lb-rank-1 td:last-child {
+  color: #b45309;
+  font-weight: 800;
+}
+
+.lb-medal {
+  display: inline-block;
+  animation: lb-medal-spin 4s ease-in-out infinite;
+}
+
+@keyframes lb-shimmer {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes lb-pulse-gold {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.4), 0 0 12px rgba(251, 191, 36, 0.28);
+  }
+  50% {
+    box-shadow: inset 0 0 0 1px rgba(244, 63, 94, 0.35), 0 0 22px rgba(251, 191, 36, 0.48);
+  }
+}
+
+@keyframes lb-medal-spin {
+  0%,
+  100% {
+    transform: rotate(-6deg) scale(1);
+  }
+  50% {
+    transform: rotate(6deg) scale(1.1);
+  }
+}
+
+/* 第 2 名：略增强 */
+.lb-rank-2 {
+  background: linear-gradient(90deg, #f8fafc, #e2e8f0, #f8fafc, #cbd5e1, #f1f5f9);
+  background-size: 220% 100%;
+  animation: lb-shimmer 2.9s ease-in-out infinite, lb-pulse-silver 2.4s ease-in-out infinite;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.58), 0 0 12px rgba(148, 163, 184, 0.28);
+}
+
+.lb-rank-2 td:last-child {
+  color: #475569;
+}
+
+@keyframes lb-pulse-silver {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.5), 0 0 8px rgba(148, 163, 184, 0.2);
+  }
+  50% {
+    box-shadow: inset 0 0 0 1px rgba(100, 116, 139, 0.45), 0 0 16px rgba(203, 213, 225, 0.55);
+  }
+}
+
+/* 第 3 名：介于减弱版与上一版之间 */
+.lb-rank-3 {
+  background: linear-gradient(90deg, #fff7ed, #ffedd5, #fed7aa, #fff7ed);
+  background-size: 190% 100%;
+  animation: lb-shimmer 3.9s ease-in-out infinite;
+  box-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.28), 0 0 8px rgba(251, 146, 60, 0.15);
+}
+
+.lb-rank-3 td:last-child {
+  color: #c2410c;
+}
+
+/* 4–7：华丽加强 */
+.lb-rank-top7 {
+  background: linear-gradient(90deg, rgba(254, 243, 199, 0.85), rgba(255, 228, 230, 0.55));
+  box-shadow: inset 3px 0 0 #f59e0b;
+  animation: lb-top7-glow 3s ease-in-out infinite;
+}
+
+@keyframes lb-top7-glow {
+  0%,
+  100% {
+    box-shadow: inset 3px 0 0 #f59e0b, 0 0 0 rgba(245, 158, 11, 0);
+  }
+  50% {
+    box-shadow: inset 3px 0 0 #e11d48, 0 0 10px rgba(251, 191, 36, 0.28);
+  }
+}
+
+/* 8–16 选拔组 */
+.lb-group-1 {
+  background: rgba(255, 251, 235, 0.55);
+  box-shadow: inset 2px 0 0 rgba(251, 191, 36, 0.55);
+}
+
+/* 17–32 希望组 */
+.lb-group-2 {
+  background: rgba(240, 249, 255, 0.7);
+  box-shadow: inset 2px 0 0 rgba(56, 189, 248, 0.55);
+}
+
+.lb-group-2 td:last-child {
+  color: #0284c7;
+}
+
+/* 33–48 启程组 */
+.lb-group-3 {
+  background: rgba(248, 250, 252, 0.9);
+  box-shadow: inset 2px 0 0 rgba(148, 163, 184, 0.5);
+}
+
+.lb-group-3 td:last-child {
+  color: #64748b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reward-sparkle,
+  .reward-sparkle-delay,
+  .reward-top1-card,
+  .lb-rank-1,
+  .lb-rank-2,
+  .lb-rank-3,
+  .lb-rank-top7,
+  .lb-medal {
+    animation: none !important;
+  }
+}

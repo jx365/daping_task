@@ -4,6 +4,8 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Lightbox from './components/Lightbox';
 import Toast from './components/Toast';
+import RewardsNotice from './components/RewardsNotice';
+import LeaderboardBoard, { type BoardItem } from './components/LeaderboardBoard';
 
 type Detail = { task: string; times: number; images: string[] };
 type UserResult = {
@@ -18,11 +20,10 @@ type UserResult = {
   times_needed?: number | null;
   target_rank?: number | null;
 };
-type BoardItem = { rank: number; user_id: string; total_times: number };
 
 export default function HomePage() {
   const router = useRouter();
-  const [tab, setTab] = useState<'query' | 'board'>('query');
+  const [tab, setTab] = useState<'query' | 'rewards' | 'board'>('query');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<UserResult | null>(null);
@@ -107,13 +108,6 @@ export default function HomePage() {
     }
   }
 
-  function formatUpdate(s: string | null) {
-    if (!s) return '—';
-    return s.slice(0, 16);
-  }
-
-  const medals = ['🥇', '🥈', '🥉'];
-
   return (
     <div className="mx-auto min-h-dvh max-w-3xl bg-white shadow-sm md:my-0">
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4">
@@ -132,6 +126,7 @@ export default function HomePage() {
         {(
           [
             ['query', 'ID 查询'],
+            ['rewards', '奖励公告'],
             ['board', '排行榜'],
           ] as const
         ).map(([key, label]) => (
@@ -298,54 +293,10 @@ export default function HomePage() {
           </div>
         )}
 
+        {tab === 'rewards' && <RewardsNotice />}
+
         {tab === 'board' && (
-          <div className="space-y-4">
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[280px] text-left text-sm">
-                <thead className="bg-slate-50 text-slate-500">
-                  <tr>
-                    <th className="px-3 py-3 font-medium">排名</th>
-                    <th className="px-3 py-3 font-medium">用户ID</th>
-                    <th className="px-3 py-3 font-medium">参与次数</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {board.map((item) => (
-                    <tr
-                      key={item.user_id}
-                      className={`border-t border-slate-100 ${
-                        item.rank <= 3 ? 'bg-amber-50/60' : ''
-                      }`}
-                    >
-                      <td className="px-3 py-3">
-                        {item.rank <= 3 ? (
-                          <span className="text-base">
-                            {medals[item.rank - 1]} {item.rank}
-                          </span>
-                        ) : (
-                          item.rank
-                        )}
-                      </td>
-                      <td className="px-3 py-3">{item.user_id}</td>
-                      <td className="px-3 py-3 font-semibold text-sky-700">
-                        {item.total_times}
-                      </td>
-                    </tr>
-                  ))}
-                  {board.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-3 py-8 text-center text-slate-400">
-                        暂无排行数据
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-center text-xs text-slate-400">
-              上次更新时间：{formatUpdate(lastUpdate)}
-            </p>
-          </div>
+          <LeaderboardBoard board={board} lastUpdate={lastUpdate} />
         )}
       </main>
 
