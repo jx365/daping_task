@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Lightbox from './components/Lightbox';
 import Toast from './components/Toast';
+import NoticeModal from './components/NoticeModal';
 import RewardsNotice from './components/RewardsNotice';
 import LeaderboardBoard, { type BoardItem } from './components/LeaderboardBoard';
 
@@ -34,6 +35,7 @@ export default function HomePage() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [password, setPassword] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const [noticeOpen, setNoticeOpen] = useState(true);
 
   useEffect(() => {
     if (!result) return;
@@ -334,6 +336,7 @@ export default function HomePage() {
         </div>
       )}
 
+      <NoticeModal open={noticeOpen} onClose={() => setNoticeOpen(false)} />
       <Lightbox src={lightbox} onClose={() => setLightbox(null)} />
       <Toast message={toast} onClose={() => setToast(null)} />
     </div>
