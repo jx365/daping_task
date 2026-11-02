@@ -5,9 +5,11 @@ import { useEffect } from 'react';
 type Props = {
   src: string | null;
   onClose: () => void;
+  /** 前台查 ID 等场景：大图同样雾化 */
+  blur?: boolean;
 };
 
-export default function Lightbox({ src, onClose }: Props) {
+export default function Lightbox({ src, onClose, blur = false }: Props) {
   useEffect(() => {
     if (!src) return;
     const onKey = (e: KeyboardEvent) => {
@@ -31,7 +33,9 @@ export default function Lightbox({ src, onClose }: Props) {
       <img
         src={src}
         alt="凭证大图"
-        className="max-h-full max-w-full object-contain"
+        className={`max-h-full max-w-full object-contain ${
+          blur ? 'scale-105 blur-[10px]' : ''
+        }`}
         onClick={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
       />

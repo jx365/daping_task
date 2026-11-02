@@ -251,7 +251,7 @@ export default function HomePage() {
                                   <img
                                     src={`/api/files/${encodeURIComponent(img)}`}
                                     alt=""
-                                    className="h-full w-full object-cover"
+                                    className="h-full w-full scale-110 object-cover blur-[6px]"
                                   />
                                 </button>
                               ))}
@@ -281,7 +281,7 @@ export default function HomePage() {
                               <img
                                 src={`/api/files/${encodeURIComponent(img)}`}
                                 alt=""
-                                className="h-full w-full object-cover"
+                                className="h-full w-full scale-110 object-cover blur-[6px]"
                               />
                             </button>
                           ))}
@@ -337,7 +337,7 @@ export default function HomePage() {
       )}
 
       <NoticeModal open={noticeOpen} onClose={() => setNoticeOpen(false)} />
-      <Lightbox src={lightbox} onClose={() => setLightbox(null)} />
+      <Lightbox src={lightbox} blur onClose={() => setLightbox(null)} />
       <Toast message={toast} onClose={() => setToast(null)} />
     </div>
   );

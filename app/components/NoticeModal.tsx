@@ -53,6 +53,9 @@ export default function NoticeModal({
           <p className="mt-3 text-center text-xl font-extrabold leading-snug text-red-600 sm:text-2xl">
             缓做慢做，错峰做大屏
           </p>
+          <p className="mt-2 text-center text-xl font-extrabold leading-snug text-red-600 sm:text-2xl">
+            做完截图前先唱五句超级喜欢你
+          </p>
         </div>
         <button
           type="button"
