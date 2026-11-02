@@ -46,12 +46,12 @@ export default function NoticeModal({
         >
           📢 重要提醒
         </h2>
-        <div className="mt-4 space-y-3 text-[15px] leading-relaxed text-slate-700">
+        <div className="mt-4 text-[15px] leading-relaxed text-slate-700">
           <p>
             小红书、抖音吞赞严重，影响大屏正常解锁，麻烦各位卡推老师在不限量时，
-            <span className="mt-2 block text-center text-xl font-extrabold leading-snug text-red-600 sm:text-2xl">
-              缓做慢做，错峰做大屏
-            </span>
+          </p>
+          <p className="mt-3 text-center text-xl font-extrabold leading-snug text-red-600 sm:text-2xl">
+            缓做慢做，错峰做大屏
           </p>
         </div>
         <button
