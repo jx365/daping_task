@@ -5,6 +5,11 @@ import { randomUUID } from 'crypto';
 import { UPLOAD_DIR, ensureDataDirs } from './paths';
 import { getDb } from './db';
 import type { DetailItem } from './summary';
+import {
+  computeTimesFromConfig,
+  getScoringConfig,
+  type ScoringConfig,
+} from './scoring';
 
 function loadExcelJS(): typeof ExcelJS {
   // 避免被 Next 打包弄坏；运行时从 node_modules 加载
@@ -24,6 +29,8 @@ export type ParsedRow = {
   userId: string;
   taskName: string;
   imageCount: number;
+  /** 表单数字列解析值；无列或非数字则为 0 */
+  formNumber: number;
   images: ParsedImage[];
   rowIndex: number;
 };
@@ -92,10 +99,17 @@ function findHeaderRow(worksheet: ExcelJS.Worksheet): number {
 
 function findColumnIndexes(
   headerRow: ExcelJS.Row,
-  maxCol: number
-): { userCol: number; taskCol: number | null; imageCols: number[] } {
+  maxCol: number,
+  numberHeaderRe: RegExp
+): {
+  userCol: number;
+  taskCol: number | null;
+  imageCols: number[];
+  numberCol: number | null;
+} {
   let userCol: number | null = null;
   let taskCol: number | null = null;
+  let numberCol: number | null = null;
   const imageCols: number[] = [];
   let firstNonEmpty: number | null = null;
 
@@ -109,16 +123,39 @@ function findColumnIndexes(
       taskCol = c;
     }
     if (IMAGE_HEADER_RE.test(t)) imageCols.push(c);
+    if (
+      numberCol == null &&
+      numberHeaderRe.test(t) &&
+      !USER_HEADER_RE.test(t) &&
+      !TASK_HEADER_RE.test(t) &&
+      !IMAGE_HEADER_RE.test(t)
+    ) {
+      numberCol = c;
+    }
   }
 
   return {
     userCol: userCol ?? firstNonEmpty ?? 1,
     taskCol,
     imageCols,
+    numberCol,
   };
 }
 
-/** 新计分：1 张图片 = 1 次参与；无图为 0 */
+function parseFormNumber(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+  const t = cellText(value).replace(/,/g, '');
+  if (!t) return 0;
+  const m = t.match(/-?\d+(\.\d+)?/);
+  if (!m) return 0;
+  const n = Number(m[0]);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.floor(n));
+}
+
+/** 兼容旧调用：默认按图片数量 1:1 */
 export function computeTimes(imageCount: number): number {
   return Math.max(0, Math.floor(Number(imageCount) || 0));
 }
@@ -179,7 +216,18 @@ export async function parseExcelBuffer(
   const maxCol = Math.max(worksheet.columnCount || 1, 20);
   const headerRowNum = findHeaderRow(worksheet);
   const headerRow = worksheet.getRow(headerRowNum);
-  const { userCol, taskCol, imageCols } = findColumnIndexes(headerRow, maxCol);
+  const scoring = getScoringConfig();
+  let numberHeaderRe: RegExp;
+  try {
+    numberHeaderRe = new RegExp(scoring.numberHeaderRegex, 'i');
+  } catch {
+    numberHeaderRe = /数量|数字|次数|积分|分数|数值/i;
+  }
+  const { userCol, taskCol, imageCols, numberCol } = findColumnIndexes(
+    headerRow,
+    maxCol,
+    numberHeaderRe
+  );
 
   // Embedded images (nativeRow is 0-based)
   const imagesByRow = new Map<number, ParsedImage[]>();
@@ -226,10 +274,13 @@ export async function parseExcelBuffer(
       images.push(...collectRemoteImages(row, scanCols));
     }
 
+    const formNumber = numberCol != null ? parseFormNumber(row.getCell(numberCol).value) : 0;
+
     rows.push({
       userId,
       taskName,
       imageCount: images.length,
+      formNumber,
       images,
       rowIndex: r,
     });
@@ -238,8 +289,15 @@ export async function parseExcelBuffer(
   return rows;
 }
 
-export function applyTimes(rows: ParsedRow[]): (ParsedRow & { times: number })[] {
-  return rows.map((r) => ({ ...r, times: computeTimes(r.imageCount) }));
+export function applyTimes(
+  rows: ParsedRow[],
+  cfg?: ScoringConfig
+): (ParsedRow & { times: number })[] {
+  const scoring = cfg ?? getScoringConfig();
+  return rows.map((r) => ({
+    ...r,
+    times: computeTimesFromConfig(scoring, r.imageCount, r.formNumber ?? 0),
+  }));
 }
 
 export function deleteTaskData(taskName: string) {

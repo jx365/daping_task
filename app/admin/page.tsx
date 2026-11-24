@@ -19,15 +19,39 @@ type SummaryItem = {
 };
 type AccountLink = { id: number; main_id: string; sub_id: string };
 
-type TabKey = 'upload' | 'accounts' | 'view' | 'edit' | 'export';
+type TaskItem = {
+  task_name: string;
+  record_count: number;
+  total_times: number;
+};
+
+type ScoringConfigState = {
+  mode: 'image' | 'form_number';
+  pointsPerImage: number;
+  ratioA: number;
+  ratioB: number;
+  numberHeaderRegex: string;
+};
+
+type TabKey = 'upload' | 'accounts' | 'tasks' | 'scoring' | 'view' | 'edit' | 'export';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'upload', label: '上传 Excel' },
   { key: 'accounts', label: '关联账号' },
+  { key: 'tasks', label: '任务管理' },
+  { key: 'scoring', label: '计分设置' },
   { key: 'view', label: '查看汇总表' },
   { key: 'edit', label: '编辑汇总表' },
   { key: 'export', label: '下载汇总表' },
 ];
+
+const DEFAULT_SCORING: ScoringConfigState = {
+  mode: 'image',
+  pointsPerImage: 1,
+  ratioA: 5,
+  ratioB: 1,
+  numberHeaderRegex: '数量|数字|次数|积分|分数|数值',
+};
 
 const MAX_FILE = 30 * 1024 * 1024;
 
@@ -83,6 +107,13 @@ export default function AdminPage() {
   const [newDetailsText, setNewDetailsText] = useState('');
   const [creating, setCreating] = useState(false);
 
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
+  const [deletingTasks, setDeletingTasks] = useState(false);
+
+  const [scoring, setScoring] = useState<ScoringConfigState>(DEFAULT_SCORING);
+  const [scoringSaving, setScoringSaving] = useState(false);
+
   useEffect(() => {
     const t = sessionStorage.getItem('adminToken');
     if (t === 'admin-ok') setToken(t);
@@ -110,11 +141,45 @@ export default function AdminPage() {
     setAccounts(await res.json());
   }, []);
 
+  const loadTasks = useCallback(async () => {
+    const res = await fetch('/api/admin/tasks', {
+      headers: { 'x-admin-token': token },
+    });
+    if (!res.ok) {
+      setToast('加载任务列表失败');
+      return;
+    }
+    const data = await res.json();
+    setTasks(data.list || []);
+    setSelectedTasks([]);
+  }, [token]);
+
+  const loadScoring = useCallback(async () => {
+    const res = await fetch('/api/admin/scoring', {
+      headers: { 'x-admin-token': token },
+    });
+    if (!res.ok) {
+      setToast('加载计分设置失败');
+      return;
+    }
+    const data = await res.json();
+    setScoring({
+      mode: data.mode === 'form_number' ? 'form_number' : 'image',
+      pointsPerImage: Number(data.pointsPerImage) || 1,
+      ratioA: Number(data.ratioA) || 5,
+      ratioB: Number(data.ratioB) || 1,
+      numberHeaderRegex:
+        String(data.numberHeaderRegex || '').trim() || DEFAULT_SCORING.numberHeaderRegex,
+    });
+  }, [token]);
+
   useEffect(() => {
     if (!token) return;
     if (tab === 'view' || tab === 'edit') loadSummaries();
     if (tab === 'accounts') loadAccounts();
-  }, [token, tab, loadSummaries, loadAccounts]);
+    if (tab === 'tasks') loadTasks();
+    if (tab === 'scoring') loadScoring();
+  }, [token, tab, loadSummaries, loadAccounts, loadTasks, loadScoring]);
 
   const matchIds = useMemo(
     () => summaries.filter((s) => matchesSearch(s, searchTerm)).map((s) => s.id),
@@ -418,6 +483,262 @@ export default function AdminPage() {
               onClick={() => fileRef.current?.click()}
             >
               选择 Excel
+            </button>
+          </div>
+        )}
+
+        {tab === 'tasks' && (
+          <div className="space-y-4">
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              按任务名批量删除 Excel 导入数据及对应凭证文件；后台「手动新增」条目不会被删除。删除后自动重建汇总。
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="min-h-11 rounded-lg border px-4 text-sm active:bg-slate-50"
+                onClick={() => {
+                  if (selectedTasks.length === tasks.length) {
+                    setSelectedTasks([]);
+                  } else {
+                    setSelectedTasks(tasks.map((t) => t.task_name));
+                  }
+                }}
+              >
+                {selectedTasks.length === tasks.length && tasks.length > 0
+                  ? '取消全选'
+                  : '全选'}
+              </button>
+              <button
+                type="button"
+                disabled={selectedTasks.length === 0 || deletingTasks}
+                className="min-h-11 rounded-lg bg-red-600 px-4 text-sm text-white active:bg-red-700 disabled:opacity-50"
+                onClick={async () => {
+                  const ok = window.confirm(
+                    `确认删除选中的 ${selectedTasks.length} 个任务及其凭证图片？此操作不可恢复。`
+                  );
+                  if (!ok) return;
+                  setDeletingTasks(true);
+                  try {
+                    const res = await fetch('/api/admin/tasks', {
+                      method: 'DELETE',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'x-admin-token': token,
+                      },
+                      body: JSON.stringify({ task_names: selectedTasks }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                      setToast(data.error || '删除失败');
+                      return;
+                    }
+                    setToast(`已删除 ${data.deleted || selectedTasks.length} 个任务`);
+                    await loadTasks();
+                    await loadSummaries();
+                  } catch {
+                    setToast('删除失败');
+                  } finally {
+                    setDeletingTasks(false);
+                  }
+                }}
+              >
+                {deletingTasks ? '删除中…' : `批量删除（${selectedTasks.length}）`}
+              </button>
+              <button
+                type="button"
+                className="min-h-11 rounded-lg border px-4 text-sm active:bg-slate-50"
+                onClick={() => loadTasks()}
+              >
+                刷新
+              </button>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="w-12 px-3 py-3" />
+                    <th className="px-3 py-3 font-medium">任务名称</th>
+                    <th className="px-3 py-3 font-medium">记录数</th>
+                    <th className="px-3 py-3 font-medium">次数合计</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.map((t) => {
+                    const checked = selectedTasks.includes(t.task_name);
+                    return (
+                      <tr key={t.task_name} className="border-t">
+                        <td className="px-3 py-3">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={checked}
+                            onChange={() => {
+                              setSelectedTasks((prev) =>
+                                checked
+                                  ? prev.filter((n) => n !== t.task_name)
+                                  : [...prev, t.task_name]
+                              );
+                            }}
+                          />
+                        </td>
+                        <td className="px-3 py-3 font-medium">{t.task_name}</td>
+                        <td className="px-3 py-3 tabular-nums">{t.record_count}</td>
+                        <td className="px-3 py-3 tabular-nums text-sky-700">
+                          {t.total_times}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {tasks.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-8 text-center text-slate-400">
+                        暂无 Excel 导入任务
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {tab === 'scoring' && (
+          <div className="mx-auto max-w-xl space-y-5">
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <strong>仅对之后新上传的 Excel 生效</strong>
+              ，不会修改已经入库的历史次数。未额外设定时默认：按图片数量计分，每张图 1 分。
+            </p>
+
+            <fieldset className="space-y-3 rounded-xl border p-4">
+              <legend className="px-1 text-sm font-medium text-slate-700">计分方式</legend>
+              <label className="flex min-h-11 cursor-pointer items-center gap-3">
+                <input
+                  type="radio"
+                  name="score-mode"
+                  checked={scoring.mode === 'image'}
+                  onChange={() => setScoring((s) => ({ ...s, mode: 'image' }))}
+                />
+                <span>按图片计分</span>
+              </label>
+              <label className="flex min-h-11 cursor-pointer items-center gap-3">
+                <input
+                  type="radio"
+                  name="score-mode"
+                  checked={scoring.mode === 'form_number'}
+                  onChange={() => setScoring((s) => ({ ...s, mode: 'form_number' }))}
+                />
+                <span>按表单数字项计分</span>
+              </label>
+            </fieldset>
+
+            {scoring.mode === 'image' ? (
+              <div className="rounded-xl border p-4">
+                <label className="mb-1 block text-sm text-slate-500">每张图片分数</label>
+                <input
+                  type="number"
+                  min={1}
+                  className="min-h-11 w-full rounded-lg border px-3"
+                  value={scoring.pointsPerImage}
+                  onChange={(e) =>
+                    setScoring((s) => ({
+                      ...s,
+                      pointsPerImage: Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                    }))
+                  }
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  例：每张图 {scoring.pointsPerImage} 分 → 交 3 张图计{' '}
+                  {3 * scoring.pointsPerImage} 分
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4 rounded-xl border p-4">
+                <div>
+                  <label className="mb-1 block text-sm text-slate-500">
+                    比例 a : b（每 a 计 b 分）
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      className="min-h-11 w-24 rounded-lg border px-3"
+                      value={scoring.ratioA}
+                      onChange={(e) =>
+                        setScoring((s) => ({
+                          ...s,
+                          ratioA: Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                        }))
+                      }
+                    />
+                    <span className="text-slate-500">:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      className="min-h-11 w-24 rounded-lg border px-3"
+                      value={scoring.ratioB}
+                      onChange={(e) =>
+                        setScoring((s) => ({
+                          ...s,
+                          ratioB: Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                        }))
+                      }
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    公式：times = floor(数字 ÷ {scoring.ratioA} × {scoring.ratioB})
+                    ；例数字 12 →{' '}
+                    {Math.floor((12 / Math.max(1, scoring.ratioA)) * scoring.ratioB)} 分
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-slate-500">
+                    数字列表头关键词（正则，用 | 分隔）
+                  </label>
+                  <input
+                    className="min-h-11 w-full rounded-lg border px-3 font-mono text-sm"
+                    value={scoring.numberHeaderRegex}
+                    onChange={(e) =>
+                      setScoring((s) => ({ ...s, numberHeaderRegex: e.target.value }))
+                    }
+                  />
+                  <p className="mt-2 text-xs text-slate-500">
+                    上传时匹配表头；找不到数字列则该行计 0 分
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={scoringSaving}
+              className="min-h-12 w-full rounded-lg bg-sky-600 text-white active:bg-sky-700 disabled:opacity-60"
+              onClick={async () => {
+                setScoringSaving(true);
+                try {
+                  const res = await fetch('/api/admin/scoring', {
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'x-admin-token': token,
+                    },
+                    body: JSON.stringify(scoring),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) {
+                    setToast(data.error || '保存失败');
+                    return;
+                  }
+                  if (data.config) setScoring(data.config);
+                  setToast('计分设置已保存（仅影响之后新上传）');
+                } catch {
+                  setToast('保存失败');
+                } finally {
+                  setScoringSaving(false);
+                }
+              }}
+            >
+              {scoringSaving ? '保存中…' : '保存计分设置'}
             </button>
           </div>
         )}
